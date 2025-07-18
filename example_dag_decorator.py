@@ -1,53 +1,45 @@
-from typing import TYPE_CHECKING, Any
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from airflow.operators.bash import BashOperator
+from airflow.utils.dates import days_ago
 
-import httpx
 import pendulum
-
-from airflow.models.baseoperator import BaseOperator
-from airflow.providers.standard.operators.bash import BashOperator
-from airflow.sdk import dag, task
-
-if TYPE_CHECKING:
-    from airflow.sdk import Context
+import httpx
 
 
-class GetRequestOperator(BaseOperator):
-    """Custom operator to send GET request to provided url"""
-
-    template_fields = ("url",)
-
-    def __init__(self, *, url: str, **kwargs):
-        super().__init__(**kwargs)
-        self.url = url
-
-    def execute(self, context: Context):
-        return httpx.get(self.url).json()
+def get_request(**kwargs):
+    url = kwargs['url']
+    response = httpx.get(url).json()
+    kwargs['ti'].xcom_push(key='origin_ip', value=response['origin'])
 
 
-@dag(
-    schedule=None,
+def prepare_command(**kwargs):
+    origin_ip = kwargs['ti'].xcom_pull(key='origin_ip')
+    return f"echo 'Seems like today your server executing Airflow is connected from IP {origin_ip}'"
+
+
+with DAG(
+    dag_id="example_dag_decorator_compat",
+    schedule_interval=None,
     start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
     catchup=False,
     tags=["example"],
-)
-def example_dag_decorator(url: str = "http://httpbin.org/get"):
-    """
-    DAG to get IP address and echo it via BashOperator.
+) as dag:
 
-    :param url: URL to get IP address from. Defaults to "http://httpbin.org/get".
-    """
-    get_ip = GetRequestOperator(task_id="get_ip", url=url)
+    get_ip = PythonOperator(
+        task_id="get_ip",
+        python_callable=get_request,
+        op_kwargs={"url": "http://httpbin.org/get"},
+    )
 
-    @task(multiple_outputs=True)
-    def prepare_command(raw_json: dict[str, Any]) -> dict[str, str]:
-        external_ip = raw_json["origin"]
-        return {
-            "command": f"echo 'Seems like today your server executing Airflow is connected from IP {external_ip}'",
-        }
+    command_task = PythonOperator(
+        task_id="prepare_command",
+        python_callable=prepare_command,
+    )
 
-    command_info = prepare_command(get_ip.output)
+    echo_task = BashOperator(
+        task_id="echo_ip_info",
+        bash_command="{{ task_instance.xcom_pull(task_ids='prepare_command') }}",
+    )
 
-    BashOperator(task_id="echo_ip_info", bash_command=command_info["command"])
-
-
-example_dag = example_dag_decorator()
+    get_ip >> command_task >> echo_task
