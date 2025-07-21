@@ -20,7 +20,7 @@ def prepare_command(**kwargs):
 
 with DAG(
     dag_id="example_dag_decorator_compat",
-    schedule_interval="*/1 * * * *",
+    schedule_interval="*/3 * * * *",
     start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
     catchup=False,
     tags=["example"],
