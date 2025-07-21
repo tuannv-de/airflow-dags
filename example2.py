@@ -27,7 +27,7 @@ def demo_metric(**kwargs):
 
 with DAG(
     dag_id="example2",
-    schedule_interval="*/3 * * * *",
+    schedule_interval="*/10 * * * *",
     start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
     catchup=False,
     tags=["example"],
