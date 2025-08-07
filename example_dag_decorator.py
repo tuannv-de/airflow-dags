@@ -20,7 +20,7 @@ with DAG(
 ) as dag:
     submit_spark = SparkKubernetesOperator(
         task_id='submit_spark_app',
-        application_file="/opt/airflow/dags/repo/sparkapp.yaml",
+        application_file="sparkapp.yaml",
         kubernetes_conn_id='microk8s_default',  # Airflow connection to your microk8s cluster
         namespace='streaming-pipeline',
         do_xcom_push=True,
