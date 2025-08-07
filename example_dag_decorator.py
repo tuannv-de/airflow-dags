@@ -1,45 +1,71 @@
 from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.operators.bash import BashOperator
+from airflow.providers.cncf.kubernetes.operators.spark_kubernetes import SparkKubernetesOperator
 from airflow.utils.dates import days_ago
 
 import pendulum
-import httpx
 
 
-def get_request(**kwargs):
-    url = kwargs['url']
-    response = httpx.get(url).json()
-    kwargs['ti'].xcom_push(key='origin_ip', value=response['origin'])
-
-
-def prepare_command(**kwargs):
-    origin_ip = kwargs['ti'].xcom_pull(key='origin_ip')
-    return f"echo 'Seems like today your server executing Airflow is connected from IP {origin_ip}'"
-
+default_args = {
+    "owner": "airflow",
+    "depends_on_past": False,
+    "retries": 1,
+}
 
 with DAG(
-    dag_id="example_dag_decorator_compat",
-    schedule_interval="*/3 * * * *",
+    dag_id="spark-example-dag",
+    schedule_interval="*/10 * * * *",
     start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
     catchup=False,
-    tags=["example"],
+    tags=['spark', 'k8s'],
 ) as dag:
+    spark_app = {
+        "apiVersion" : "sparkoperator.k8s.io/v1beta2",
+        "kind" : "SparkApplication",
+        "metadata" : {
+            "name"      : "money-transfer-spark-streaming",
+            "namespace" : "streaming-pipeline",
+        },
+        "spec" : {
+            "type"               : "Scala",
+            "pythonVersion"      : "3",
+            "mode"               : "cluster",
+            "image"              : "spark:3.5.3",
+            "imagePullPolicy"    : "IfNotPresent",
+            "mainClass"          : "org.apache.spark.examples.SparkPi",
+            "mainApplicationFile": "local:///opt/spark/examples/jars/spark-examples.jar",
+            "sparkVersion"       : "3.5.3",
+            "arguments": ["5000"],
 
-    get_ip = PythonOperator(
-        task_id="get_ip",
-        python_callable=get_request,
-        op_kwargs={"url": "http://httpbin.org/get"},
+            "driver" : {
+                "labels" : {
+                    "version" : "3.5.3"
+                },
+                "serviceAccount" : "spark",
+                "cores"          : 1,
+                "memory"         : "1g",
+                "env" : []
+            },
+            "executor" : {
+                "labels" : {
+                    "version" : "3.5.3"
+                },
+                "instances" : 1,
+                "cores"     : 2,
+                "memory"    : "512m",
+                "env" : []
+            }
+        }
+    }
+
+    submit_spark = SparkKubernetesOperator(
+        task_id='submit_spark_app',
+        application=spark_app,
+        kubernetes_conn_id='microk8s_default',  # Airflow connection to your microk8s cluster
+        namespace='streaming-pipeline',
+        do_xcom_push=True,
+        get_logs=True,
+        delete_on_termination=False,
     )
 
-    command_task = PythonOperator(
-        task_id="prepare_command",
-        python_callable=prepare_command,
-    )
-
-    echo_task = BashOperator(
-        task_id="echo_ip_info",
-        bash_command="{{ task_instance.xcom_pull(task_ids='prepare_command') }}",
-    )
-
-    get_ip >> command_task >> echo_task
+    # Task dependencies
+    submit_spark
