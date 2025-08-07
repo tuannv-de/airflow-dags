@@ -23,7 +23,6 @@ with DAG(
         application_file="sparkapp.yaml",
         kubernetes_conn_id='kubernetes_default',  # Airflow connection to your microk8s cluster
         namespace='streaming-pipeline',
-        do_xcom_push=True,
         get_logs=True,
         delete_on_termination=False,
     )
