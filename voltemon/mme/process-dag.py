@@ -26,7 +26,7 @@ def demo_metric(**kwargs):
     print("Demo metric task executed")
 
 with DAG(
-    dag_id="example2",
+    dag_id="example21112",
     schedule_interval="*/4 * * * *",
     start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
     catchup=False,
