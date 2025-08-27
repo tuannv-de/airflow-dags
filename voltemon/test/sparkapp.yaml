@@ -16,7 +16,7 @@
 apiVersion: sparkoperator.k8s.io/v1beta2
 kind: SparkApplication
 metadata:
-  name: spark-pi
+  name: spark-pi-{{ ts_nodash }}
   namespace: streaming-pipeline
 spec:
   type: Scala
